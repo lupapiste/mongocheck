@@ -21,7 +21,14 @@
          (update :checks conj checker-fn)))))
 
 (defn- errors-for-document [mongo-document checks]
-  (remove nil? (map (fn [f] (f mongo-document)) checks)))
+  (remove nil?
+    (map
+      (fn [f]
+        (try
+          (f mongo-document)
+          (catch Throwable t
+            (.getMessage t))))
+      checks)))
 
 (defn- execute-collection-checks [db collection {:keys [columns checks]}]
   (let [documents (mc/find-maps db collection {} (zipmap columns (repeat 1)))]
