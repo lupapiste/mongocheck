@@ -1,0 +1,42 @@
+# Java:
+*.class
+
+# Eclipse:
+.classpath
+.settings
+.project
+.externalToolBuilders
+bin
+
+# CCW:
+.nrepl-port
+
+# Idea
+*.iml
+*.ipr
+*.iws
+.idea
+
+# Maven:
+target
+pom.xml
+
+# Lein:
+.lein-*
+checkouts
+
+# Backups
+~$*
+
+# Temp
+temp
+.cache
+
+# VCS
+*.orig
+
+# OSX
+.DS_Store
+
+# Logs
+*.log
