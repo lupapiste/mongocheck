@@ -1,8 +1,7 @@
 (ns lupapiste.mongocheck.core
   "Library for running checks on MongoDB data."
   (:require [clojure.set :refer [union]]
-            [monger.collection :as mc]
-            [monger.conversion :as mconv]))
+            [monger.collection :as mc]))
 
 (defonce ^:private checks (atom {}))
 
@@ -21,8 +20,8 @@
          (update :columns union (set (map keyword columns)))
          (update :checks conj checker-fn)))))
 
-(defn- errors-for-document [document checks]
-  (remove nil? (map (fn [f] (f document)) checks)))
+(defn- errors-for-document [mongo-document checks]
+  (remove nil? (map (fn [f] (f mongo-document)) checks)))
 
 (defn- execute-collection-checks [db collection {:keys [columns checks]}]
   (let [documents (mc/find-maps db collection {} (zipmap columns (repeat 1)))]
