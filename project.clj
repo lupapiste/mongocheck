@@ -1,4 +1,4 @@
-(defproject lupapiste/mongocheck "0.1.1"
+(defproject lupapiste/mongocheck "0.1.2"
   :description "Library for running checks on MongoDB data"
   :url "http://www.solita.fi"
   :license {:name "Eclipse Public License"
@@ -6,4 +6,4 @@
             :distribution :repo}
   :scm {:url "https://github.com/lupapiste/mongocheck.git"}
   :dependencies [[org.clojure/clojure "1.8.0"]
-                 [com.novemberain/monger "3.0.2"]])
+                 [com.novemberain/monger "3.1.0"]])
