@@ -5,6 +5,24 @@
 
 (defonce ^:private checks (atom {}))
 
+(defn- ->columns [interesting-properties]
+  (->> (if (and (coll? (first interesting-properties))
+                (= 1 (count interesting-properties)))
+         (first interesting-properties)
+         interesting-properties)
+       (map keyword)
+       (set)))
+
+(defn- empty-set? [s]
+  (and (set? s) (empty? s)))
+
+(defn- update-columns [columns interesting-properties]
+  (let [new-columns (->columns interesting-properties)]
+    (if (or (empty-set? columns)      ; columns is empty set = select all properties
+            (empty-set? new-columns)) ; no new properties    = select all properties
+      #{}
+      (union columns new-columns))))
+
 (defn mongocheck
   "Define a named check for a document in given collection.
    Checker function shall be given the document to be checked.
@@ -12,13 +30,10 @@
    Checked document properties can be given to optimize database lookup."
   [collection checker-fn & interesting-properties]
   {:pre [(keyword? collection) (fn? checker-fn)]}
-  (let [columns (if (and (coll? (first interesting-properties)) (= 1 (count interesting-properties)))
-                  (first interesting-properties)
-                  interesting-properties)]
-    (swap! checks update collection
-      #(-> %
-         (update :columns union (set (map keyword columns)))
-         (update :checks conj checker-fn)))))
+  (swap! checks update collection
+         #(-> %
+              (update :columns update-columns interesting-properties)
+              (update :checks conj checker-fn))))
 
 (defn- errors-for-document [mongo-document checks]
   (remove nil?
