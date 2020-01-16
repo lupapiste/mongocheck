@@ -36,24 +36,33 @@
               (update :checks conj checker-fn))))
 
 (defn- errors-for-document [mongo-document checks]
-  (remove nil?
-    (map
-      (fn [f]
-        (try
-          (f mongo-document)
-          (catch Throwable t
-            (.getMessage t))))
-      checks)))
+  (->> checks
+       (keep (fn [f]
+              (try
+                (let [start (System/currentTimeMillis)
+                      res (f mongo-document)]
+                  [res f (- (System/currentTimeMillis) start)])
+                (catch Throwable t
+                  (.getMessage t)))))
+       doall))
 
 (defn- execute-collection-checks [db collection {:keys [columns checks]}]
-  (let [documents (mc/find-maps db collection {} (zipmap columns (repeat 1)))]
-    (into {}
-      (filter seq
-        (pmap (fn [mongo-document]
-                (let [errors (errors-for-document mongo-document checks)]
-                  (if (seq errors)
-                    [(:_id mongo-document) errors])))
-          documents)))))
+  (let [times (atom [])
+        documents (mc/find-maps db collection {} (zipmap columns (repeat 1)))
+        result (->> documents
+                    (pmap (fn [mongo-document]
+                            (let [[errors fn-name time] (errors-for-document mongo-document checks)]
+                              (swap! times conj [time fn-name])
+                              (when (seq errors)
+                                [(:_id mongo-document) errors]))))
+                    (filter seq)
+                    (into {}))]
+    (->> @times
+         (sort-by first >)
+         (take 1000)
+         (map println)
+         dorun)
+    result))
 
 (defn execute-checks
   "Execute checks against given db (see monger.core/get-db).
