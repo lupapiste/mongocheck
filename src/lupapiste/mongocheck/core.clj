@@ -46,26 +46,32 @@
        doall))
 
 (defn- execute-collection-checks [db collection {:keys [columns checks]}]
-  (let [times (atom [])
-        documents (mc/find-maps db collection {} (zipmap columns (repeat 1)))
-        result (->> documents
+  (let [documents (mc/find-maps db collection {} (zipmap columns (repeat 1)))
+        results (->> documents
                     (pmap (fn [mongo-document]
                             (let [[errors fn-name time] (errors-for-document mongo-document checks)]
-                              (swap! times conj [time fn-name])
-                              (when (seq errors)
-                                [(:_id mongo-document) errors]))))
-                    (filter seq)
-                    (into {}))]
-    (->> @times
-         (sort-by first >)
-         (take 1000)
-         (map println)
-         dorun)
-    result))
+                              [time fn-name (when (seq errors)
+                                              [(:_id mongo-document) errors])]))))]
+    (try
+      (->> results
+           (filter #(-> % first number?))
+           (sort-by first >)
+           (take 1000)
+           (map println)
+           doall)
+      (catch Throwable t
+        (println "Error calculating check timing")
+        (.printStackTrace t)))
+    (->> results
+         (keep last)
+         (into {}))))
 
 (defn execute-checks
   "Execute checks against given db (see monger.core/get-db).
    Returns a map of checked collections.
    Values contain a map of document ids + error messages."
   [db]
-  (into {} (pmap (fn [[collection m]] [collection (execute-collection-checks db collection m)]) @checks)))
+  (->> @checks
+       (reduce (fn [acc [collection m]]
+                 (assoc acc collection (execute-collection-checks db collection m)))
+               {})))
