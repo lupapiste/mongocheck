@@ -37,13 +37,12 @@
 
 (defn- errors-for-document [mongo-document checks]
   (->> checks
-       (keep (fn [f]
-              (try
-                (let [start (System/currentTimeMillis)
-                      res (f mongo-document)]
-                  [res f (- (System/currentTimeMillis) start)])
-                (catch Throwable t
-                  (.getMessage t)))))
+       (map (fn [f]
+              (let [start (System/currentTimeMillis)
+                    res (try (f mongo-document)
+                             (catch Throwable t
+                               (.getMessage t)))]
+                [res (str f) (- (System/currentTimeMillis) start)])))
        doall))
 
 (defn- execute-collection-checks [db collection {:keys [columns checks]}]
