@@ -1,7 +1,8 @@
 (ns lupapiste.mongocheck.core
   "Library for running checks on MongoDB data."
   (:require [clojure.set :refer [union]]
-            [monger.query :as mq]))
+            [monger.query :as mq]
+            [monger.collection :as mc]))
 
 (defonce ^:private checks (atom {}))
 
@@ -42,27 +43,31 @@
                     res   (try (f mongo-document)
                                (catch Throwable t
                                  (.getMessage t)))]
-                [res (str f) (- (System/currentTimeMillis) start)])))
+                [(:_id mongo-document) res (str f) (- (System/currentTimeMillis) start)])))
        doall))
 
 (defn- execute-collection-checks [db collection {:keys [columns checks]}]
   (let [coll-str  (name collection)
+        one-doc   (mc/find-one-as-map db coll-str {})
+        sort-key  (first (filter #(contains? one-doc %) [:modified :created :_id]))
         documents (mq/with-collection db coll-str
                     (mq/find {})
                     (mq/fields (zipmap columns (repeat 1)))
-                    (mq/sort (array-map :modified -1))
-                    (mq/limit 10000))
+                    (mq/sort (if sort-key
+                               {sort-key -1}
+                               {}))
+                    (mq/limit 10000)
+                    (mq/batch-size 1000))
         results   (->> documents
                        (pmap (fn [mongo-document]
-                               (let [[errors fn-name time] (errors-for-document mongo-document checks)]
-                                 [time fn-name (when (seq errors)
-                                                 [(:_id mongo-document) errors])]))))]
+                               (errors-for-document mongo-document checks)))
+                       (apply concat))]
     (try
       (->> results
-           (filter (fn [[ms _ _]]
+           (filter (fn [[_ _ _ ms]]
                      (and (number? ms)
                           (> ms 1))))
-           (sort-by first >)
+           (sort-by last >)
            (take 100)
            (map println)
            doall)
@@ -70,8 +75,11 @@
         (println "Error calculating check timing")
         (.printStackTrace t)))
     (->> results
-         (keep last)
-         (into {}))))
+         (reduce (fn [acc [id error _ _]]
+                   (if error
+                     (update acc id conj error)
+                     acc))
+                 {}))))
 
 (defn execute-checks
   "Execute checks against given db (see monger.core/get-db).
