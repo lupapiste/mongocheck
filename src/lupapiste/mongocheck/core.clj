@@ -46,7 +46,8 @@
        doall))
 
 (defn- execute-collection-checks [db collection {:keys [columns checks]}]
-  (let [documents (mq/with-collection db collection
+  (let [coll-str (name collection)
+        documents (mq/with-collection db coll-str
                     (mq/find {})
                     (mq/fields columns)
                     (mq/sort (array-map :modified -1))
