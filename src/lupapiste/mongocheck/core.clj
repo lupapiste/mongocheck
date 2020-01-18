@@ -1,7 +1,7 @@
 (ns lupapiste.mongocheck.core
   "Library for running checks on MongoDB data."
   (:require [clojure.set :refer [union]]
-            [monger.collection :as mc]))
+            [monger.query :as mq]))
 
 (defonce ^:private checks (atom {}))
 
@@ -18,7 +18,7 @@
 
 (defn- update-columns [columns interesting-properties]
   (let [new-columns (->columns interesting-properties)]
-    (if (or (empty-set? columns)      ; columns is empty set = select all properties
+    (if (or (empty-set? columns) ; columns is empty set = select all properties
             (empty-set? new-columns)) ; no new properties    = select all properties
       #{}
       (union columns new-columns))))
@@ -39,24 +39,30 @@
   (->> checks
        (map (fn [f]
               (let [start (System/currentTimeMillis)
-                    res (try (f mongo-document)
-                             (catch Throwable t
-                               (.getMessage t)))]
+                    res   (try (f mongo-document)
+                               (catch Throwable t
+                                 (.getMessage t)))]
                 [res (str f) (- (System/currentTimeMillis) start)])))
        doall))
 
 (defn- execute-collection-checks [db collection {:keys [columns checks]}]
-  (let [documents (mc/find-maps db collection {} (zipmap columns (repeat 1)))
-        results (->> documents
-                    (pmap (fn [mongo-document]
-                            (let [[errors fn-name time] (errors-for-document mongo-document checks)]
-                              [time fn-name (when (seq errors)
-                                              [(:_id mongo-document) errors])]))))]
+  (let [documents (mq/with-collection db collection
+                    (mq/find {})
+                    (mq/fields columns)
+                    (mq/sort (array-map :modified -1))
+                    (mq/limit 10000))
+        results   (->> documents
+                       (pmap (fn [mongo-document]
+                               (let [[errors fn-name time] (errors-for-document mongo-document checks)]
+                                 [time fn-name (when (seq errors)
+                                                 [(:_id mongo-document) errors])]))))]
     (try
       (->> results
-           (filter #(-> % first number?))
+           (filter (fn [[ms _ _]]
+                     (and (number? ms)
+                          (> ms 1))))
            (sort-by first >)
-           (take 1000)
+           (take 100)
            (map println)
            doall)
       (catch Throwable t
