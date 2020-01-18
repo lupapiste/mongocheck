@@ -46,10 +46,10 @@
        doall))
 
 (defn- execute-collection-checks [db collection {:keys [columns checks]}]
-  (let [coll-str (name collection)
+  (let [coll-str  (name collection)
         documents (mq/with-collection db coll-str
                     (mq/find {})
-                    (mq/fields columns)
+                    (mq/fields (zipmap columns (repeat 1)))
                     (mq/sort (array-map :modified -1))
                     (mq/limit 10000))
         results   (->> documents

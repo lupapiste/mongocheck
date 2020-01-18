@@ -1,4 +1,4 @@
-(defproject lupapiste/mongocheck "0.1.4-alpha5"
+(defproject lupapiste/mongocheck "0.1.4-alpha6"
   :description "Library for running checks on MongoDB data"
   :url "http://www.solita.fi"
   :license {:name "Eclipse Public License"
