@@ -38,16 +38,15 @@
 
 (defn- errors-for-document [mongo-document checks]
   (->> checks
-       (map (fn [f]
-              (let [start (System/currentTimeMillis)
-                    res   (try (f mongo-document)
-                               (catch Throwable t
-                                 (.getMessage t)))]
-                [(:_id mongo-document) res (str f) (- (System/currentTimeMillis) start)])))
+       (keep (fn [f]
+               (try (f mongo-document)
+                    (catch Throwable t
+                      (.getMessage t)))))
        doall))
 
 (defn- execute-collection-checks [db collection {:keys [columns checks]}]
-  (let [coll-str  (name collection)
+  (let [start-ts  (System/currentTimeMillis)
+        coll-str  (name collection)
         one-doc   (mc/find-one-as-map db coll-str {})
         sort-key  (first (filter #(contains? one-doc %) [:modified :created :_id]))
         documents (mq/with-collection db coll-str
@@ -60,26 +59,13 @@
                     (mq/batch-size 1000))
         results   (->> documents
                        (pmap (fn [mongo-document]
-                               (errors-for-document mongo-document checks)))
-                       (apply concat))]
-    (try
-      (->> results
-           (filter (fn [[_ _ _ ms]]
-                     (and (number? ms)
-                          (> ms 1))))
-           (sort-by last >)
-           (take 100)
-           (map println)
-           doall)
-      (catch Throwable t
-        (println "Error calculating check timing")
-        (.printStackTrace t)))
-    (->> results
-         (reduce (fn [acc [id error _ _]]
-                   (if error
-                     (update acc id conj error)
-                     acc))
-                 {}))))
+                               (let [errors (errors-for-document mongo-document checks)]
+                                 (when (seq errors)
+                                   [(:_id mongo-document) errors]))))
+                       (remove nil?)
+                       (into {}))]
+    (println "Checking collection" coll-str "took" (int (/ (- (System/currentTimeMillis) start-ts) 1000)) "s")
+    results))
 
 (defn execute-checks
   "Execute checks against given db (see monger.core/get-db).
@@ -87,6 +73,6 @@
    Values contain a map of document ids + error messages."
   [db]
   (->> @checks
-       (reduce (fn [acc [collection m]]
-                 (assoc acc collection (execute-collection-checks db collection m)))
-               {})))
+       (pmap (fn [[collection m]]
+               [collection (execute-collection-checks db collection m)]))
+       (into {})))
