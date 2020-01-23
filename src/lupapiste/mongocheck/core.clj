@@ -2,7 +2,8 @@
   "Library for running checks on MongoDB data."
   (:require [clojure.set :refer [union]]
             [monger.query :as mq]
-            [monger.collection :as mc]))
+            [monger.collection :as mc])
+  (:import [com.mongodb MongoQueryException]))
 
 (defonce ^:private checks (atom {}))
 
@@ -45,27 +46,32 @@
        doall))
 
 (defn- execute-collection-checks [db collection {:keys [columns checks]}]
-  (let [start-ts  (System/currentTimeMillis)
-        coll-str  (name collection)
-        one-doc   (mc/find-one-as-map db coll-str {})
-        sort-key  (first (filter #(contains? one-doc %) [:modified :created :_id]))
-        documents (mq/with-collection db coll-str
-                    (mq/find {})
-                    (mq/fields (zipmap columns (repeat 1)))
-                    (mq/sort (if sort-key
-                               {sort-key -1}
-                               {}))
-                    (mq/limit 10000)
-                    (mq/batch-size 1000))
-        results   (->> documents
-                       (pmap (fn [mongo-document]
-                               (let [errors (errors-for-document mongo-document checks)]
-                                 (when (seq errors)
-                                   [(:_id mongo-document) errors]))))
-                       (remove nil?)
-                       (into {}))]
-    (println "Checking collection" coll-str "took" (int (/ (- (System/currentTimeMillis) start-ts) 1000)) "s")
-    results))
+  (try
+    (let [start-ts  (System/currentTimeMillis)
+          coll-str  (name collection)
+          one-doc   (mc/find-one-as-map db coll-str {})
+          sort-key  (first (filter #(contains? one-doc %) [:modified :created :_id]))
+          documents (mq/with-collection db coll-str
+                      (mq/find {})
+                      (mq/fields (zipmap columns (repeat 1)))
+                      (mq/sort (if sort-key
+                                 {sort-key -1}
+                                 {}))
+                      (mq/limit 10000)
+                      (mq/batch-size 1000))
+          results   (->> documents
+                         (pmap (fn [mongo-document]
+                                 (let [errors (errors-for-document mongo-document checks)]
+                                   (when (seq errors)
+                                     [(:_id mongo-document) errors]))))
+                         (remove nil?)
+                         (into {}))]
+      (println "Checking collection" coll-str "took" (int (/ (- (System/currentTimeMillis) start-ts) 1000)) "s")
+      results)
+    (catch MongoQueryException e
+      (println "Mongo query failed for collection" collection)
+      (println (.getMessage e))
+      {})))
 
 (defn execute-checks
   "Execute checks against given db (see monger.core/get-db).
